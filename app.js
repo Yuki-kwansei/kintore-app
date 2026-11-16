@@ -70,48 +70,221 @@
       b.className = 'chip' + (ex.id === state.selectedId ? ' is-selected' : '');
       b.textContent = ex.name;
       b.setAttribute('aria-pressed', ex.id === state.selectedId ? 'true' : 'false');
-      b.addEventListener('click', () => selectExercise(ex.id));
+      b.setAttribute('aria-description', '長押しでメニュー');
+      attachLongPress(b, () => openMenu(ex.id), () => selectExercise(ex.id));
       el.exerciseList.appendChild(b);
     });
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'chip chip-add';
     add.textContent = '＋追加';
-    add.addEventListener('click', addExerciseTemporary);
+    add.addEventListener('click', openAddSheet);
     el.exerciseList.appendChild(add);
     el.exerciseEmpty.hidden = state.exercises.length > 0;
   }
 
-  // 【仮】ステップ4で正式な種目追加シートに置き換える
-  async function addExerciseTemporary() {
-    const name = window.prompt('種目名を入力してください');
-    if (name === null) return;
-    const typeNo = window.prompt('記録タイプを番号で選んでください\n1: 重さ×回数\n2: 回数のみ\n3: 時間のみ(秒)', '1');
-    if (typeNo === null) return;
-    const type = { '1': 'weight_reps', '2': 'reps', '3': 'time' }[typeNo.trim()];
-    if (!type) { window.alert('1〜3の番号で選んでください'); return; }
+  // 長押し(0.5秒)で onLong、普通のタップで onTap。PCでは右クリックでも onLong
+  function attachLongPress(button, onLong, onTap) {
+    const LONG_MS = 500;
+    const MOVE_PX = 10;
+    let timer = null;
+    let startX = 0, startY = 0;
+    let longFired = false;
 
-    const r = await DB.addExercise(name, type);
-    if (r.ok) {
-      await loadExercises();
-      await selectExercise(r.exerciseId);
-      return;
+    function cancel() {
+      clearTimeout(timer);
+      timer = null;
+      button.classList.remove('is-pressing');
     }
-    if (r.error === 'duplicate') {
-      window.alert(r.message);
-      await selectExercise(r.exerciseId);
-      return;
-    }
-    if (r.error === 'duplicate_hidden') {
-      if (!window.confirm(r.message)) return;
-      const u = await DB.updateExercise(r.exerciseId, { visible: true });
-      if (!u.ok) { window.alert(u.message); return; }
-      await loadExercises();
-      await selectExercise(r.exerciseId);
-      return;
-    }
-    window.alert(r.message);
+
+    button.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      longFired = false;
+      startX = e.clientX; startY = e.clientY;
+      button.classList.add('is-pressing');
+      timer = setTimeout(() => {
+        longFired = true;
+        cancel();
+        if (navigator.vibrate) navigator.vibrate(10);
+        onLong();
+      }, LONG_MS);
+    });
+    button.addEventListener('pointermove', (e) => {
+      if (timer && (Math.abs(e.clientX - startX) > MOVE_PX || Math.abs(e.clientY - startY) > MOVE_PX)) cancel();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => button.addEventListener(t, cancel));
+    button.addEventListener('click', (e) => {
+      if (longFired) { e.preventDefault(); longFired = false; return; }
+      onTap();
+    });
+    button.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (!longFired) { cancel(); longFired = true; onLong(); }
+    });
   }
+
+  // ---------- シート共通 ----------
+
+  function openSheet(sheet) {
+    sheet.hidden = false;
+    document.body.classList.add('sheet-open');
+  }
+
+  function closeSheet(sheet) {
+    sheet.hidden = true;
+    if (document.querySelectorAll('.sheet:not([hidden])').length === 0) {
+      document.body.classList.remove('sheet-open');
+    }
+  }
+
+  document.querySelectorAll('.sheet').forEach((sheet) => {
+    sheet.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeSheet(sheet)));
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach(closeSheet);
+  });
+
+  function setSheetError(target, message) {
+    target.textContent = message || '';
+    target.hidden = !message;
+  }
+
+  // ---------- 種目追加シート(5章) ----------
+
+  const addEl = {
+    sheet: $('add-sheet'),
+    form: $('add-form'),
+    name: $('add-name'),
+    error: $('add-error'),
+    submit: $('add-submit'),
+  };
+
+  function openAddSheet() {
+    addEl.form.reset();
+    setSheetError(addEl.error, '');
+    openSheet(addEl.sheet);
+    addEl.name.focus();
+  }
+
+  addEl.name.addEventListener('input', () => setSheetError(addEl.error, ''));
+
+  addEl.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (addEl.submit.disabled) return;
+    const name = addEl.name.value;
+    const type = addEl.form.querySelector('input[name="add-type"]:checked').value;
+    if (!name.trim()) {
+      setSheetError(addEl.error, '種目名を入力してください');
+      addEl.name.focus();
+      return;
+    }
+
+    addEl.submit.disabled = true;
+    try {
+      const r = await DB.addExercise(name, type);
+      if (r.ok) {
+        closeSheet(addEl.sheet);
+        await loadExercises();
+        await selectExercise(r.exerciseId);
+        showToast('「' + r.exercise.name + '」を追加しました');
+        return;
+      }
+      if (r.error === 'duplicate') {
+        // 同じ名前があれば追加せず、その種目を開く
+        closeSheet(addEl.sheet);
+        await selectExercise(r.exerciseId);
+        showToast(r.message);
+        return;
+      }
+      if (r.error === 'duplicate_hidden') {
+        if (!window.confirm(r.message)) return;
+        const u = await DB.updateExercise(r.exerciseId, { visible: true });
+        if (!u.ok) { setSheetError(addEl.error, u.message); return; }
+        closeSheet(addEl.sheet);
+        await loadExercises();
+        await selectExercise(r.exerciseId);
+        showToast('「' + u.exercise.name + '」を再表示しました');
+        return;
+      }
+      setSheetError(addEl.error, r.message);
+    } finally {
+      addEl.submit.disabled = false;
+    }
+  });
+
+  // ---------- 種目メニュー(長押し): 名前変更・非表示・削除 ----------
+
+  const menuEl = {
+    sheet: $('menu-sheet'),
+    form: $('rename-form'),
+    title: $('menu-title'),
+    meta: $('menu-meta'),
+    rename: $('rename-input'),
+    renameSubmit: $('rename-submit'),
+    error: $('menu-error'),
+    hide: $('hide-btn'),
+    del: $('delete-btn'),
+    deleteNote: $('delete-note'),
+  };
+  let menuExerciseId = null;
+
+  async function openMenu(id) {
+    const ex = state.exercises.find((e) => e.id === id);
+    if (!ex) return;
+    menuExerciseId = id;
+    menuEl.title.textContent = ex.name;
+    menuEl.meta.textContent = TYPE_LABELS[ex.type];
+    menuEl.rename.value = ex.name;
+    setSheetError(menuEl.error, '');
+    menuEl.del.hidden = true;
+    menuEl.deleteNote.hidden = true;
+    openSheet(menuEl.sheet);
+
+    // 記録がゼロの種目だけ削除ボタンを出す
+    const last = await DB.getLastWorkout(id);
+    if (menuExerciseId !== id) return;
+    const hasRecords = !last.ok || last.date !== null;
+    menuEl.del.hidden = hasRecords;
+    menuEl.deleteNote.hidden = !hasRecords;
+  }
+
+  menuEl.rename.addEventListener('input', () => setSheetError(menuEl.error, ''));
+
+  menuEl.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (menuEl.renameSubmit.disabled) return;
+    menuEl.renameSubmit.disabled = true;
+    try {
+      const r = await DB.updateExercise(menuExerciseId, { name: menuEl.rename.value });
+      if (!r.ok) { setSheetError(menuEl.error, r.message); return; }
+      closeSheet(menuEl.sheet);
+      await loadExercises();
+      renderEntry();
+      showToast('名前を変更しました');
+    } finally {
+      menuEl.renameSubmit.disabled = false;
+    }
+  });
+
+  menuEl.hide.addEventListener('click', async () => {
+    const r = await DB.updateExercise(menuExerciseId, { visible: false });
+    if (!r.ok) { setSheetError(menuEl.error, r.message); return; }
+    closeSheet(menuEl.sheet);
+    await loadExercises();   // 選択中の種目を隠した場合は選択も外れる
+    renderEntry();
+    showToast('「' + r.exercise.name + '」を非表示にしました');
+  });
+
+  menuEl.del.addEventListener('click', async () => {
+    const ex = state.exercises.find((e) => e.id === menuExerciseId);
+    if (!ex || !window.confirm('「' + ex.name + '」を削除します。よろしいですか?')) return;
+    const r = await DB.deleteExercise(menuExerciseId);
+    if (!r.ok) { setSheetError(menuEl.error, r.message); return; }
+    closeSheet(menuEl.sheet);
+    await loadExercises();
+    renderEntry();
+    showToast('「' + ex.name + '」を削除しました');
+  });
 
   // ---------- 入力欄 ----------
 

@@ -53,6 +53,78 @@
   </section>
 </main>
 
+<!-- 画面3: 種目追加シート(5章) -->
+<div id="add-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-title" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <form class="sheet-panel" id="add-form" novalidate>
+    <div class="sheet-head">
+      <h2 id="add-title">種目を追加</h2>
+      <button type="button" class="sheet-close" data-close aria-label="閉じる">×</button>
+    </div>
+
+    <label class="form-label" for="add-name">種目名</label>
+    <input type="text" id="add-name" class="text-input" autocomplete="off" enterkeyhint="done" placeholder="例: ベンチプレス">
+
+    <fieldset class="type-cards">
+      <legend class="form-label">記録タイプ</legend>
+      <label class="type-card">
+        <input type="radio" name="add-type" value="weight_reps" checked>
+        <span class="type-card-body">
+          <span class="type-card-title">重さ×回数</span>
+          <span class="type-card-example">ベンチプレス、ラットプルダウンなど</span>
+        </span>
+      </label>
+      <label class="type-card">
+        <input type="radio" name="add-type" value="reps">
+        <span class="type-card-body">
+          <span class="type-card-title">回数のみ</span>
+          <span class="type-card-example">懸垂、腕立て伏せなど</span>
+        </span>
+      </label>
+      <label class="type-card">
+        <input type="radio" name="add-type" value="time">
+        <span class="type-card-body">
+          <span class="type-card-title">時間のみ(秒)</span>
+          <span class="type-card-example">プランクなど</span>
+        </span>
+      </label>
+    </fieldset>
+    <p class="hint">記録タイプは追加後に変更できません。</p>
+
+    <p id="add-error" class="error" role="alert" hidden></p>
+    <button type="submit" id="add-submit" class="btn btn-primary sheet-action">追加して記録する</button>
+  </form>
+</div>
+
+<!-- 種目メニュー(種目ボタンの長押しで開く) -->
+<div id="menu-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <form class="sheet-panel" id="rename-form" novalidate>
+    <div class="sheet-head">
+      <div>
+        <h2 id="menu-title"></h2>
+        <p id="menu-meta" class="entry-meta"></p>
+      </div>
+      <button type="button" class="sheet-close" data-close aria-label="閉じる">×</button>
+    </div>
+
+    <label class="form-label" for="rename-input">種目名</label>
+    <div class="inline-form">
+      <input type="text" id="rename-input" class="text-input" autocomplete="off" enterkeyhint="done">
+      <button type="submit" id="rename-submit" class="btn btn-ghost btn-inline">名前を変更</button>
+    </div>
+
+    <p id="menu-error" class="error" role="alert" hidden></p>
+
+    <div class="menu-actions">
+      <button type="button" id="hide-btn" class="btn btn-ghost">非表示にする</button>
+      <p class="hint">非表示にしても、過去の記録とグラフは残ります。</p>
+      <button type="button" id="delete-btn" class="btn btn-danger" hidden>削除する</button>
+      <p id="delete-note" class="hint" hidden>記録がある種目は削除できません。やめた種目は非表示にしてください。</p>
+    </div>
+  </form>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <nav class="tabbar" aria-label="画面の切り替え">
