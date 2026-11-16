@@ -15,10 +15,15 @@
   <section id="screen-record" class="screen" aria-label="記録">
     <header class="top">
       <h1>記録</h1>
-      <label class="date-field">
-        <span class="visually-hidden">日付</span>
-        <input type="date" id="date">
-      </label>
+      <div class="top-actions">
+        <label class="date-field">
+          <span class="visually-hidden">日付</span>
+          <input type="date" id="date">
+        </label>
+        <button type="button" id="settings-btn" class="icon-btn" aria-label="設定">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
     </header>
 
     <div class="block">
@@ -38,6 +43,26 @@
       <button type="button" id="add-set" class="btn btn-ghost">＋セット追加</button>
       <p id="entry-error" class="error" role="alert" hidden></p>
     </div>
+
+    <form id="meal-form" class="block card" novalidate>
+      <h2 class="block-title meal-title">食事メモ(任意)</h2>
+      <div class="segmented" role="radiogroup" aria-label="区分">
+        <label class="seg-radio"><input type="radio" name="meal-category" value="朝"><span>朝</span></label>
+        <label class="seg-radio"><input type="radio" name="meal-category" value="昼"><span>昼</span></label>
+        <label class="seg-radio"><input type="radio" name="meal-category" value="夜"><span>夜</span></label>
+        <label class="seg-radio"><input type="radio" name="meal-category" value="間食"><span>間食</span></label>
+      </div>
+      <label class="visually-hidden" for="meal-content">内容</label>
+      <input type="text" id="meal-content" class="text-input meal-content" autocomplete="off" placeholder="内容(例: 鶏むね定食)" enterkeyhint="done">
+      <div class="meal-row">
+        <label class="field meal-kcal">
+          <input type="text" id="meal-kcal" inputmode="numeric" autocomplete="off" placeholder="—" aria-label="kcal">
+          <span class="unit">kcal</span>
+        </label>
+        <button type="submit" id="meal-save" class="btn btn-ghost btn-inline">食事を保存</button>
+      </div>
+      <p id="meal-error" class="error" role="alert" hidden></p>
+    </form>
 
     <div class="save-bar" id="save-bar" hidden>
       <button type="button" id="save" class="btn btn-primary">保存</button>
@@ -156,6 +181,24 @@
       <p id="delete-note" class="hint" hidden>記録がある種目は削除できません。やめた種目は非表示にしてください。</p>
     </div>
   </form>
+</div>
+
+<!-- 設定メニュー(バックアップ) -->
+<div id="settings-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2 id="settings-title">設定</h2>
+      <button type="button" class="sheet-close" data-close aria-label="閉じる">×</button>
+    </div>
+    <h3 class="form-label">バックアップ</h3>
+    <p class="hint settings-hint">データはこのiPhoneの中だけに保存されています。機種変更や不具合に備えて、ときどき書き出してください。</p>
+    <div class="settings-actions">
+      <button type="button" id="export-btn" class="btn btn-ghost">データを書き出す</button>
+      <label class="btn btn-ghost file-btn">データを読み込む<input type="file" id="import-file" accept="application/json,.json"></label>
+    </div>
+    <p class="hint">読み込むと、今のデータはすべて消えて、ファイルの内容に置き換わります。</p>
+  </div>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

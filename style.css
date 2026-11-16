@@ -302,3 +302,40 @@ body.sheet-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: center;
   margin: 0; color: var(--muted); font-size: 15px;
 }
+
+/* ---------- 設定ボタン ---------- */
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 44px; height: 44px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* ---------- 食事メモ ---------- */
+.meal-title { margin-bottom: 10px; }
+.seg-radio { flex: 1; display: flex; }
+.seg-radio input { position: absolute; opacity: 0; pointer-events: none; }
+.seg-radio span {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 44px;
+  font-size: 15px;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.seg-radio input:checked + span { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.seg-radio input:focus-visible + span { outline: 2px solid var(--accent); }
+.meal-content { margin-top: 10px; }
+.meal-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.meal-kcal { flex: 1; }
+
+/* ---------- 設定シート ---------- */
+.settings-hint { margin: 0 0 12px; }
+.settings-actions { display: grid; gap: 8px; }
+.file-btn { display: flex; align-items: center; justify-content: center; }
+.file-btn input { display: none; }

@@ -418,6 +418,115 @@
     }
   });
 
+  // ---------- 食事メモ(任意) ----------
+
+  const mealEl = {
+    form: $('meal-form'),
+    content: $('meal-content'),
+    kcal: $('meal-kcal'),
+    save: $('meal-save'),
+    error: $('meal-error'),
+  };
+
+  // 時刻から区分の初期値を決める(変更可)
+  function defaultMealCategory() {
+    const h = new Date().getHours();
+    if (h >= 4 && h < 10) return '朝';
+    if (h >= 10 && h < 15) return '昼';
+    if (h >= 15 && h < 17) return '間食';
+    return '夜';
+  }
+
+  function resetMealForm() {
+    mealEl.content.value = '';
+    mealEl.kcal.value = '';
+    const def = mealEl.form.querySelector('input[name="meal-category"][value="' + defaultMealCategory() + '"]');
+    if (def) def.checked = true;
+    setSheetError(mealEl.error, '');
+  }
+
+  [mealEl.content, mealEl.kcal].forEach((i) => i.addEventListener('input', () => setSheetError(mealEl.error, '')));
+
+  mealEl.form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (mealEl.save.disabled) return;
+    const category = mealEl.form.querySelector('input[name="meal-category"]:checked').value;
+    // 内容もkcalも空欄なら何もしない(保存しない)
+    if (!mealEl.content.value.trim() && !mealEl.kcal.value.trim()) {
+      setSheetError(mealEl.error, '内容かkcalを入力してください');
+      return;
+    }
+    mealEl.save.disabled = true;
+    try {
+      const r = await DB.addMeal(el.date.value, category, mealEl.content.value, mealEl.kcal.value);
+      if (!r.ok) { setSheetError(mealEl.error, r.message); return; }
+      resetMealForm();
+      mealEl.content.blur();
+      mealEl.kcal.blur();
+      showToast('食事(' + category + ')を保存しました');
+    } finally {
+      mealEl.save.disabled = false;
+    }
+  });
+
+  // ---------- 設定メニュー: データの書き出し・読み込み ----------
+
+  const setEl = {
+    sheet: $('settings-sheet'),
+    open: $('settings-btn'),
+    exportBtn: $('export-btn'),
+    importFile: $('import-file'),
+  };
+
+  setEl.open.addEventListener('click', () => openSheet(setEl.sheet));
+
+  setEl.exportBtn.addEventListener('click', async () => {
+    if (setEl.exportBtn.disabled) return;
+    setEl.exportBtn.disabled = true;
+    try {
+      const r = await DB.exportAll();
+      if (!r.ok) { showToast(r.message); return; }
+      const filename = 'kintore-backup-' + DB.today() + '.json';
+      const file = new File([r.json], filename, { type: 'application/json' });
+
+      // iPhoneでは共有シート(「"ファイル"に保存」など)を使う。使えない環境はダウンロード
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+          showToast('書き出しました');
+        } catch (err) {
+          if (err && err.name !== 'AbortError') showToast('書き出せませんでした: ' + err.message);
+        }
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(file);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      showToast('書き出しました');
+    } finally {
+      setEl.exportBtn.disabled = false;
+    }
+  });
+
+  setEl.importFile.addEventListener('change', async () => {
+    const file = setEl.importFile.files[0];
+    setEl.importFile.value = '';
+    if (!file) return;
+    if (!window.confirm('今のデータはすべて消えて、「' + file.name + '」の内容に置き換わります。よろしいですか?')) return;
+    const r = await DB.importAll(file);
+    if (!r.ok) { window.alert('読み込めませんでした: ' + r.message); return; }
+    closeSheet(setEl.sheet);
+    state.selectedId = null;
+    await loadExercises();
+    renderEntry();
+    window.alert('読み込みました\n種目 ' + r.counts.exercises + '件 / 筋トレ記録 ' + r.counts.workouts +
+      'セット / 食事 ' + r.counts.meals + '件');
+  });
+
   // ---------- グラフ画面(4章 画面2) ----------
 
   const UNITS = { weight_reps: 'kg', reps: '回', time: '秒' };
@@ -663,6 +772,7 @@
 
   async function init() {
     el.date.value = DB.today();
+    resetMealForm();
     DB.requestPersistentStorage();
     await loadExercises();
   }
