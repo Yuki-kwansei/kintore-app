@@ -270,3 +270,35 @@ h1 { font-size: 24px; margin: 0; }
 .btn-danger { color: var(--danger); background: transparent; border-color: var(--danger); }
 
 body.sheet-open { overflow: hidden; }
+
+/* ---------- グラフ画面 ---------- */
+.chip.is-hidden-exercise { opacity: 0.6; border-style: dashed; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.stat { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.stat-label { font-size: 13px; color: var(--muted); margin: 0; }
+.stat-value { font-size: 22px; font-weight: 700; margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.stat-value.is-up { color: var(--ok); }
+.stat-value.is-down { color: var(--danger); }
+.stat-sub { font-size: 12px; color: var(--muted); margin: 0; }
+
+.segmented { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg {
+  flex: 1;
+  min-height: 44px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.seg.is-active { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.chart-wrap { position: relative; height: 260px; margin-top: 12px; }
+.chart-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0; color: var(--muted); font-size: 15px;
+}

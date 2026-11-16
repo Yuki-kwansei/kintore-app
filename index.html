@@ -44,12 +44,45 @@
     </div>
   </section>
 
-  <!-- 画面2: グラフ(ステップ5で作る) -->
+  <!-- 画面2: グラフ(ダッシュボード) -->
   <section id="screen-graph" class="screen" aria-label="グラフ" hidden>
     <header class="top">
       <h1>グラフ</h1>
     </header>
-    <p class="hint">準備中です。</p>
+
+    <div class="block">
+      <div id="graph-exercise-list" class="chips"></div>
+      <p id="graph-no-exercise" class="hint" hidden>種目がまだありません。記録画面の「＋追加」で作ってください。</p>
+    </div>
+
+    <div id="graph-body" class="block card" hidden>
+      <h2 id="graph-name" class="entry-name"></h2>
+      <p id="graph-meta" class="entry-meta"></p>
+
+      <div class="stats">
+        <div class="stat">
+          <p class="stat-label">自己ベスト</p>
+          <p class="stat-value" id="stat-best">—</p>
+          <p class="stat-sub" id="stat-best-date"></p>
+        </div>
+        <div class="stat">
+          <p class="stat-label">直近の伸び</p>
+          <p class="stat-value" id="stat-change">—</p>
+          <p class="stat-sub">前回の記録日との差</p>
+        </div>
+      </div>
+
+      <div class="segmented" role="group" aria-label="期間">
+        <button type="button" class="seg" data-period="1m">1か月</button>
+        <button type="button" class="seg is-active" data-period="3m" aria-pressed="true">3か月</button>
+        <button type="button" class="seg" data-period="all">全期間</button>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="chart" role="img" aria-label="種目別の推移グラフ"></canvas>
+        <p id="graph-empty" class="chart-empty" hidden></p>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -132,6 +165,7 @@
   <button type="button" class="tab" data-screen="graph">グラフ</button>
 </nav>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="db.js"></script>
 <script src="app.js"></script>
 </body>

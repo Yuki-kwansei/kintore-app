@@ -418,11 +418,237 @@
     }
   });
 
+  // ---------- グラフ画面(4章 画面2) ----------
+
+  const UNITS = { weight_reps: 'kg', reps: '回', time: '秒' };
+  const VALUE_LABELS = {
+    weight_reps: '1日の「重さ×回数」の合計',
+    reps: '1日の回数の合計',
+    time: '1日の秒数の合計',
+  };
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  const graph = {
+    exercises: [],       // 非表示も含めたすべての種目(過去の記録を見られるように)
+    exerciseId: null,
+    period: '3m',
+    chart: null,
+  };
+
+  const gEl = {
+    list: $('graph-exercise-list'),
+    noExercise: $('graph-no-exercise'),
+    body: $('graph-body'),
+    name: $('graph-name'),
+    meta: $('graph-meta'),
+    best: $('stat-best'),
+    bestDate: $('stat-best-date'),
+    change: $('stat-change'),
+    empty: $('graph-empty'),
+    canvas: $('chart'),
+  };
+
+  function fmtNum(v) {
+    return v.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+  }
+
+  function ymdToTime(ymd) {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, d).getTime();
+  }
+
+  function timeToShort(t) {
+    const d = new Date(t);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  async function refreshGraph() {
+    const r = await DB.getExercises({ all: true });
+    const all = r.ok ? r.exercises : [];
+    // 表示中の種目を先に、非表示の種目を後ろに並べる
+    graph.exercises = all.filter((e) => e.visible).concat(all.filter((e) => !e.visible));
+    if (!graph.exercises.some((e) => e.id === graph.exerciseId)) {
+      const fromRecord = graph.exercises.find((e) => e.id === state.selectedId);
+      graph.exerciseId = fromRecord ? fromRecord.id : (graph.exercises[0] ? graph.exercises[0].id : null);
+    }
+    renderGraphExercises();
+    await renderGraph();
+  }
+
+  function renderGraphExercises() {
+    gEl.list.textContent = '';
+    graph.exercises.forEach((ex) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const selected = ex.id === graph.exerciseId;
+      b.className = 'chip' + (selected ? ' is-selected' : '') + (ex.visible ? '' : ' is-hidden-exercise');
+      b.textContent = ex.name;
+      b.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      if (!ex.visible) b.title = '非表示の種目';
+      b.addEventListener('click', async () => {
+        graph.exerciseId = ex.id;
+        renderGraphExercises();
+        await renderGraph();
+      });
+      gEl.list.appendChild(b);
+    });
+    gEl.noExercise.hidden = graph.exercises.length > 0;
+  }
+
+  async function renderGraph() {
+    const ex = graph.exercises.find((e) => e.id === graph.exerciseId);
+    gEl.body.hidden = !ex;
+    if (!ex) return;
+
+    gEl.name.textContent = ex.name + (ex.visible ? '' : '(非表示)');
+    gEl.meta.textContent = VALUE_LABELS[ex.type] + '(' + UNITS[ex.type] + ')';
+
+    const r = await DB.getProgress(ex.id, graph.period);
+    if (graph.exerciseId !== ex.id) return; // 待っている間に別の種目が選ばれた
+    if (!r.ok) { showToast(r.message); return; }
+    const unit = UNITS[ex.type];
+
+    // 自己ベストと直近の伸び(全期間で計算)
+    if (r.best) {
+      gEl.best.textContent = fmtNum(r.best.value) + ' ' + unit;
+      gEl.bestDate.textContent = timeToShort(ymdToTime(r.best.date)) + ' に達成';
+    } else {
+      gEl.best.textContent = '—';
+      gEl.bestDate.textContent = '';
+    }
+    gEl.change.classList.remove('is-up', 'is-down');
+    if (r.recentChange === null) {
+      gEl.change.textContent = '—';
+    } else {
+      const sign = r.recentChange > 0 ? '+' : r.recentChange < 0 ? '−' : '±';
+      gEl.change.textContent = sign + fmtNum(Math.abs(r.recentChange)) + ' ' + unit;
+      if (r.recentChange > 0) gEl.change.classList.add('is-up');
+      if (r.recentChange < 0) gEl.change.classList.add('is-down');
+    }
+
+    // 記録が1件もない / 期間内にない
+    if (!r.best) {
+      showChartEmpty('まだ記録がありません');
+      return;
+    }
+    if (r.points.length === 0) {
+      showChartEmpty('この期間の記録はありません');
+      return;
+    }
+    gEl.empty.hidden = true;
+    gEl.canvas.hidden = false;
+    drawChart(r.points, unit);
+  }
+
+  function showChartEmpty(message) {
+    if (graph.chart) { graph.chart.destroy(); graph.chart = null; }
+    gEl.canvas.hidden = true;
+    gEl.empty.textContent = message;
+    gEl.empty.hidden = false;
+  }
+
+  function drawChart(points, unit) {
+    if (typeof Chart === 'undefined') {
+      showChartEmpty('グラフを読み込めませんでした(通信を確認してください)');
+      return;
+    }
+    const data = points.map((p) => ({ x: ymdToTime(p.date), y: p.value }));
+    const minX = data[0].x;
+    const maxX = data[data.length - 1].x;
+    // 1点だけのときも見やすいよう前後に余白を取る
+    const pad = Math.max(DAY_MS, Math.round((maxX - minX) * 0.05));
+    const spanDays = Math.max(1, Math.round((maxX - minX + 2 * pad) / DAY_MS));
+    const stepDays = Math.max(1, Math.ceil(spanDays / 5));
+
+    const accent = cssVar('--accent');
+    const muted = cssVar('--muted');
+    const line = cssVar('--line');
+
+    if (graph.chart) graph.chart.destroy();
+    graph.chart = new Chart(gEl.canvas, {
+      type: 'line',
+      data: {
+        datasets: [{
+          data,
+          borderColor: accent,
+          backgroundColor: accent,
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              title: (items) => timeToShort(items[0].parsed.x),
+              label: (item) => fmtNum(item.parsed.y) + ' ' + unit,
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            min: minX - pad,
+            max: maxX + pad,
+            ticks: {
+              color: muted,
+              stepSize: stepDays * DAY_MS,
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 6,
+              callback: (v) => timeToShort(v),
+            },
+            grid: { display: false },
+            border: { color: line },
+          },
+          y: {
+            beginAtZero: false,
+            grace: '10%',
+            ticks: { color: muted, maxTicksLimit: 6, callback: (v) => fmtNum(v) },
+            grid: { color: line },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  document.querySelectorAll('.seg').forEach((seg) => {
+    seg.addEventListener('click', async () => {
+      graph.period = seg.dataset.period;
+      document.querySelectorAll('.seg').forEach((s) => {
+        const active = s === seg;
+        s.classList.toggle('is-active', active);
+        s.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      await renderGraph();
+    });
+  });
+
+  // ダークモードの切り替えでグラフの色を合わせ直す
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (!$('screen-graph').hidden) renderGraph();
+    });
+  }
+
   // ---------- 下部タブ ----------
 
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       const name = tab.dataset.screen;
+      if (name === 'graph') refreshGraph();
       document.querySelectorAll('.tab').forEach((t) => {
         const active = t === tab;
         t.classList.toggle('is-active', active);
