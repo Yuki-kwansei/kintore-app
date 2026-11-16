@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>db.js 動作確認</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; line-height: 1.5; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 24px 0 8px; }
+  .note { font-size: 13px; opacity: 0.75; margin: 0 0 12px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button, label.file { min-height: 44px; padding: 0 14px; font-size: 15px; border-radius: 10px;
+    border: 1px solid #8884; background: #8881; color: inherit; cursor: pointer; display: inline-flex; align-items: center; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.danger { color: #dc2626; }
+  #summary { font-weight: bold; margin: 12px 0 4px; }
+  #summary.pass { color: #16a34a; }
+  #summary.fail { color: #dc2626; }
+  #log { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  #log li { padding: 4px 0; border-bottom: 1px solid #8882; }
+  #log li.ng { color: #dc2626; }
+  pre { font-size: 12px; background: #8881; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  input[type=file] { display: none; }
+</style>
+<script>
+  // 本番データ(kintore)に触れないよう、テスト専用のDBを使う
+  window.KINTORE_DB_NAME = 'kintore-test';
+</script>
+<script src="db.js"></script>
+</head>
+<body>
+<h1>db.js 動作確認</h1>
+<p class="note">テスト専用のデータ領域「kintore-test」を使います。アプリ本体のデータには影響しません。</p>
+
+<h2>1. 自動テスト</h2>
+<p class="note">テスト用データを消してから、6章の関数をすべて順に試します。</p>
+<div class="buttons">
+  <button class="primary" id="runTests">自動テストを実行</button>
+</div>
+<div id="summary"></div>
+<ul id="log"></ul>
+
+<h2>2. 手動で確認</h2>
+<div class="buttons">
+  <button id="showAll">全データを表示</button>
+  <button id="sample">サンプルデータを入れる</button>
+  <button id="exportBtn">データを書き出す</button>
+  <label class="file">データを読み込む<input type="file" id="importFile" accept="application/json,.json"></label>
+  <button id="persist">永続ストレージを確認</button>
+  <button class="danger" id="clear">テスト用データを全部消す</button>
+</div>
+<pre id="out">(結果がここに出ます)</pre>
+
+<script>
+(function () {
+  const logEl = document.getElementById('log');
+  const summaryEl = document.getElementById('summary');
+  const outEl = document.getElementById('out');
+  let passed = 0, failed = 0;
+
+  function show(obj) { outEl.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2); }
+
+  function check(name, cond, detail) {
+    const li = document.createElement('li');
+    if (cond) { passed++; li.textContent = '✅ ' + name; }
+    else { failed++; li.className = 'ng'; li.textContent = '❌ ' + name + (detail !== undefined ? ' → ' + JSON.stringify(detail) : ''); }
+    logEl.appendChild(li);
+  }
+
+  function daysAgo(n) {
+    const d = new Date(); d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  const EMPTY = { app: 'kintore', version: 1, exercises: [], workouts: [], meals: [] };
+
+  async function runTests() {
+    passed = 0; failed = 0; logEl.innerHTML = ''; summaryEl.textContent = '実行中…'; summaryEl.className = '';
+    let r;
+
+    r = await DB.importAll(EMPTY);
+    check('準備: テスト用データを空にする', r.ok, r);
+
+    // --- 種目の追加 ---
+    r = await DB.addExercise('ベンチプレス', 'weight_reps');
+    check('addExercise: ベンチプレス(重さ×回数)→ ex_001', r.ok && r.exerciseId === 'ex_001', r);
+    r = await DB.addExercise('懸垂', 'reps');
+    check('addExercise: 懸垂(回数のみ)→ ex_002', r.ok && r.exerciseId === 'ex_002', r);
+    r = await DB.addExercise('プランク', 'time');
+    check('addExercise: プランク(時間のみ)→ ex_003', r.ok && r.exerciseId === 'ex_003', r);
+
+    r = await DB.addExercise('  べんちぷれす ', 'weight_reps');
+    check('重複: 前後空白+ひらがな「べんちぷれす」は既存扱い', !r.ok && r.error === 'duplicate' && r.exerciseId === 'ex_001', r);
+    r = await DB.addExercise('ﾍﾞﾝﾁﾌﾟﾚｽ', 'reps');
+    check('重複: 半角カナ「ﾍﾞﾝﾁﾌﾟﾚｽ」も既存扱い', !r.ok && r.error === 'duplicate', r);
+    r = await DB.addExercise('', 'reps');
+    check('addExercise: 空の名前はエラー', !r.ok && r.error === 'invalid_name', r);
+    r = await DB.addExercise('スクワット', 'kg');
+    check('addExercise: 不正な記録タイプはエラー', !r.ok && r.error === 'invalid_type', r);
+
+    r = await DB.getExercises();
+    check('getExercises: 表示中は3件・並び順どおり',
+      r.ok && r.exercises.map((e) => e.id).join() === 'ex_001,ex_002,ex_003', r);
+
+    // --- 筋トレ記録 ---
+    const d0 = daysAgo(100), d1 = daysAgo(10), d2 = daysAgo(3);
+    r = await DB.addWorkout(d0, 'ex_001', [{ weight: 50, reps: 10 }]);
+    check('addWorkout: 100日前に1セット', r.ok && r.count === 1, r);
+    r = await DB.addWorkout(d1, 'ex_001', [{ weight: '60', reps: '10' }, { weight: 60, reps: 8 }]);
+    check('addWorkout: 文字列の数値も受け付けて2セット保存', r.ok && r.count === 2, r);
+    r = await DB.addWorkout(d2, 'ex_001', [{ weight: 65, reps: 8 }, { weight: 65, reps: 8 }, { weight: 65, reps: 6 }]);
+    check('addWorkout: 3セット保存', r.ok && r.count === 3, r);
+    r = await DB.addWorkout(d2, 'ex_001', [{ weight: 65, reps: 0 }]);
+    check('addWorkout: 回数0はエラー', !r.ok && r.error === 'invalid_set', r);
+    r = await DB.addWorkout(d2, 'ex_001', [{ weight: '', reps: 5 }]);
+    check('addWorkout: 重さ空欄はエラー', !r.ok && r.error === 'invalid_set', r);
+    r = await DB.addWorkout(d2, 'ex_001', []);
+    check('addWorkout: セットなしはエラー', !r.ok && r.error === 'no_sets', r);
+    r = await DB.addWorkout('2026-02-30', 'ex_001', [{ weight: 60, reps: 5 }]);
+    check('addWorkout: 存在しない日付はエラー', !r.ok && r.error === 'invalid_date', r);
+    r = await DB.addWorkout(d2, 'ex_999', [{ weight: 60, reps: 5 }]);
+    check('addWorkout: 存在しない種目はエラー', !r.ok && r.error === 'not_found', r);
+
+    r = await DB.getLastWorkout('ex_001');
+    check('getLastWorkout: 前回は3日前の3セット',
+      r.ok && r.date === d2 && r.sets.length === 3 && r.sets[0].weight === 65 && r.sets[0].reps === 8 && r.sets[2].reps === 6, r);
+    r = await DB.getLastWorkout('ex_002');
+    check('getLastWorkout: 記録なしは空', r.ok && r.date === null && r.sets.length === 0, r);
+
+    // --- グラフ用の集計 ---
+    r = await DB.getProgress('ex_001', 'all');
+    check('getProgress(全期間): 3点 [500, 1080, 1430]',
+      r.ok && r.points.map((p) => p.value).join() === '500,1080,1430', r);
+    check('getProgress: 自己ベスト 1430(3日前)', r.ok && r.best && r.best.value === 1430 && r.best.date === d2, r.best);
+    check('getProgress: 直近の伸び +350', r.ok && r.recentChange === 350, r.recentChange);
+    r = await DB.getProgress('ex_001', '1m');
+    check('getProgress(1か月): 100日前の点は除外して2点', r.ok && r.points.length === 2, r);
+    r = await DB.getProgress('ex_001', '3m');
+    check('getProgress(3か月): 2点', r.ok && r.points.length === 2, r);
+    r = await DB.getProgress('ex_001', 'week');
+    check('getProgress: 不正な期間はエラー', !r.ok && r.error === 'invalid_period', r);
+
+    await DB.addWorkout(d2, 'ex_002', [{ reps: 10 }, { reps: 8 }]);
+    r = await DB.getProgress('ex_002', 'all');
+    check('getProgress(回数のみ): 回数の合計 18', r.ok && r.points.length === 1 && r.points[0].value === 18 && r.recentChange === null, r);
+    await DB.addWorkout(d2, 'ex_003', [{ seconds: 60 }, { seconds: 45 }]);
+    r = await DB.getProgress('ex_003', 'all');
+    check('getProgress(時間のみ): 秒の合計 105', r.ok && r.points[0].value === 105, r);
+    r = await DB.getLastWorkout('ex_003');
+    check('getLastWorkout(時間のみ): 秒だけ返る', r.ok && r.sets.length === 2 && r.sets[0].seconds === 60 && r.sets[0].weight === undefined, r);
+
+    r = await DB.addWorkout(d2, 'ex_001', [{ weight: 40, reps: 10 }]);
+    r = await DB.getLastWorkout('ex_001');
+    check('addWorkout: 同じ日に追加保存するとセット番号が続く(4セット目)',
+      r.ok && r.sets.length === 4 && r.sets[3].weight === 40, r);
+
+    // --- 種目の変更・非表示・削除 ---
+    r = await DB.deleteExercise('ex_001');
+    check('deleteExercise: 記録がある種目は削除できない', !r.ok && r.error === 'has_records', r);
+    r = await DB.addExercise('お試し種目', 'reps');
+    const tmpId = r.exerciseId;
+    r = await DB.deleteExercise(tmpId);
+    check('deleteExercise: 記録ゼロの種目は削除できる', r.ok, r);
+
+    r = await DB.updateExercise('ex_002', { name: '懸垂(ワイド)' });
+    check('updateExercise: 名前を変更', r.ok && r.exercise.name === '懸垂(ワイド)', r);
+    r = await DB.getProgress('ex_002', 'all');
+    check('名前を変えても記録とグラフはつながる', r.ok && r.points[0].value === 18, r);
+    r = await DB.updateExercise('ex_002', { name: 'ベンチプレス' });
+    check('updateExercise: 他の種目と同じ名前はエラー', !r.ok && r.error === 'duplicate', r);
+    r = await DB.updateExercise('ex_002', { name: '懸垂(ワイド)' });
+    check('updateExercise: 自分と同じ名前はそのまま通る', r.ok, r);
+
+    r = await DB.updateExercise('ex_003', { visible: false });
+    check('updateExercise: プランクを非表示', r.ok && r.exercise.visible === false, r);
+    r = await DB.getExercises();
+    check('getExercises(表示中のみ): 2件', r.ok && r.exercises.length === 2, r);
+    r = await DB.getExercises({ all: true });
+    check('getExercises(すべて): 3件', r.ok && r.exercises.length === 3, r);
+    r = await DB.addExercise('ぷらんく', 'time');
+    check('addExercise: 非表示の種目と同じ名前 → 再表示の確認用エラー',
+      !r.ok && r.error === 'duplicate_hidden' && r.exerciseId === 'ex_003', r);
+    r = await DB.updateExercise('ex_003', { visible: true });
+    check('updateExercise: 再表示', r.ok && r.exercise.visible === true, r);
+
+    // --- 食事記録 ---
+    r = await DB.addMeal(d2, '夜', '鶏むね定食', '650');
+    check('addMeal: 内容とkcalを保存', r.ok && r.meal.kcal === 650, r);
+    r = await DB.addMeal(d2, '朝', 'プロテイン', '');
+    check('addMeal: kcalは空欄でも保存できる', r.ok && r.meal.kcal === null, r);
+    r = await DB.addMeal(d2, '昼', '  ', '');
+    check('addMeal: 内容もkcalも空なら保存しない', !r.ok && r.error === 'empty', r);
+    r = await DB.addMeal(d2, '夜食', 'ラーメン', 800);
+    check('addMeal: 不正な区分はエラー', !r.ok && r.error === 'invalid_category', r);
+    await DB.addMeal(d0, '昼', '100日前の食事', 700);
+    r = await DB.getMeals('1m');
+    check('getMeals(1か月): 2件', r.ok && r.meals.length === 2, r);
+    r = await DB.getMeals('all');
+    check('getMeals(全期間): 3件・新しい順', r.ok && r.meals.length === 3 && r.meals[2].date === d0, r);
+
+    // --- 書き出し・読み込み ---
+    const exp = await DB.exportAll();
+    check('exportAll: 全データのJSON',
+      exp.ok && exp.data.exercises.length === 3 && exp.data.workouts.length === 11 && exp.data.meals.length === 3, exp.data && {
+        exercises: exp.data.exercises.length, workouts: exp.data.workouts.length, meals: exp.data.meals.length });
+    r = await DB.importAll(EMPTY);
+    r = await DB.getExercises({ all: true });
+    check('importAll(空): 全データが消える', r.ok && r.exercises.length === 0, r);
+    r = await DB.importAll(new Blob([exp.json], { type: 'application/json' }));
+    check('importAll(ファイル): 件数どおり復元',
+      r.ok && r.counts.exercises === 3 && r.counts.workouts === 11 && r.counts.meals === 3, r);
+    r = await DB.getProgress('ex_001', 'all');
+    check('復元後もグラフの値が同じ', r.ok && r.points.map((p) => p.value).join() === '500,1080,1830', r);
+    r = await DB.importAll('{これはJSONではない');
+    check('importAll: 壊れたファイルはエラー', !r.ok && r.error === 'invalid_file', r);
+    r = await DB.importAll({ app: 'other', exercises: [], workouts: [], meals: [] });
+    check('importAll: 別アプリのファイルはエラー', !r.ok && r.error === 'invalid_file', r);
+    r = await DB.getExercises({ all: true });
+    check('importAll失敗時はデータが残る', r.ok && r.exercises.length === 3, r);
+
+    summaryEl.textContent = failed === 0 ? `すべて成功(${passed}件)` : `失敗 ${failed}件 / 成功 ${passed}件`;
+    summaryEl.className = failed === 0 ? 'pass' : 'fail';
+  }
+
+  document.getElementById('runTests').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { await runTests(); } catch (err) { summaryEl.textContent = '想定外のエラー: ' + err; summaryEl.className = 'fail'; }
+    e.target.disabled = false;
+  });
+
+  document.getElementById('showAll').addEventListener('click', async () => {
+    const r = await DB.exportAll();
+    show(r.ok ? r.data : r);
+  });
+
+  document.getElementById('sample').addEventListener('click', async () => {
+    await DB.importAll(EMPTY);
+    const bench = (await DB.addExercise('ベンチプレス', 'weight_reps')).exerciseId;
+    const pull = (await DB.addExercise('懸垂', 'reps')).exerciseId;
+    const plank = (await DB.addExercise('プランク', 'time')).exerciseId;
+    for (let i = 0; i < 8; i++) {
+      const d = daysAgo(70 - i * 9);
+      const w = 50 + i * 2.5;
+      await DB.addWorkout(d, bench, [{ weight: w, reps: 10 }, { weight: w, reps: 8 }, { weight: w, reps: 6 }]);
+      await DB.addWorkout(d, pull, [{ reps: 5 + i }, { reps: 4 + i }]);
+      await DB.addWorkout(d, plank, [{ seconds: 30 + i * 5 }]);
+    }
+    await DB.addMeal(DB.today(), '夜', '鶏むね定食', 650);
+    const r = await DB.getProgress(bench, 'all');
+    show({ message: 'サンプルデータを入れました。ベンチプレスの集計:', progress: r });
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', async () => {
+    const r = await DB.exportAll();
+    if (!r.ok) { show(r); return; }
+    const blob = new Blob([r.json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kintore-test-backup-' + DB.today() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    show('書き出しました: ' + a.download);
+  });
+
+  document.getElementById('importFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    show(await DB.importAll(file));
+    e.target.value = '';
+  });
+
+  document.getElementById('persist').addEventListener('click', async () => {
+    show(await DB.requestPersistentStorage());
+  });
+
+  document.getElementById('clear').addEventListener('click', async () => {
+    if (!confirm('テスト用データ(kintore-test)を全部消します。よろしいですか?')) return;
+    show(await DB.importAll(EMPTY));
+  });
+})();
+</script>
+</body>
+</html>
