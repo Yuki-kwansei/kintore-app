@@ -774,6 +774,10 @@
     el.date.value = DB.today();
     resetMealForm();
     DB.requestPersistentStorage();
+    // アプリ本体を端末に保存する(sw.js)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
     await loadExercises();
   }
 
